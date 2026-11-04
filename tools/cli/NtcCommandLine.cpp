@@ -67,6 +67,8 @@ struct
     bool enableGpuDeflate = false;
     bool printVersion = false;
     bool enableDithering = true;
+    bool linearFloatInputs = false;
+    bool exrFloat32 = false;
     bool keepFileNames = false;
     int gridSizeScale = 2;
     int numFeatures = NTC_MLP_FEATURES;
@@ -140,6 +142,8 @@ bool ProcessCommandLine(int argc, const char** argv)
         OPT_STRING ('F', "imageFormat", &imageFormatString, "Set the output file format for color images: Auto (default), BMP, JPG, TGA, PNG, PNG16, EXR"),
         OPT_STRING (0,   "dimensions", &dimensionsString, "Set the dimensions of the NTC texture set before compression, in the 'WxH' format"),
         OPT_BOOLEAN(0,   "dithering", &g_options.enableDithering, "Enable dithering for 8-bit output textures when decompressing with graphics APIs (default on, use --no-dithering)"),
+        OPT_BOOLEAN(0,   "exrFloat32", &g_options.exrFloat32, "Save EXR images with 32-bit float channels instead of 16-bit (default off)"),
+        OPT_BOOLEAN(0,   "linearFloatInputs", &g_options.linearFloatInputs, "Keep float input images in the Linear color space instead of HLG (default off)"),
         
         OPT_GROUP("Advanced settings:"),
         OPT_FLOAT  (0,   "bcPsnrThreshold", &g_options.bcPsnrThreshold, "PSNR loss threshold for BC7 optimization, in dB, default value is 0.2"),
@@ -617,7 +621,8 @@ bool SaveImagesFromTextureSet(ntc::IContext* context, ntc::ITextureSet* textureS
 
             StartAsyncTask([&mutex, container, outputFileName, mipWidth, mipHeight, numChannels, channelFormat, data, &anyErrors]()
             {
-                bool success = SaveImageToContainer(container, data, mipWidth, mipHeight, numChannels, outputFileName.c_str());
+                bool success = SaveImageToContainer(container, data, mipWidth, mipHeight, numChannels, outputFileName.c_str(),
+                    g_options.exrFloat32);
                 
                 // The rest of this function is interlocked with other threads
                 std::lock_guard lockGuard(mutex);
@@ -1201,9 +1206,10 @@ ntc::ITextureSet* LoadImages(ntc::IContext* context, Manifest& manifest)
         size_t const bytesPerComponent = ntc::GetBytesPerPixelComponent(image->channelFormat);
         size_t const pixelStride = 4 * bytesPerComponent;
         ntc::ColorSpace const srcRgbColorSpace = image->isSRGB ? ntc::ColorSpace::sRGB : ntc::ColorSpace::Linear;
-        ntc::ColorSpace const dstRgbColorSpace = image->channelFormat == ntc::ChannelFormat::FLOAT32 ? ntc::ColorSpace::HLG : srcRgbColorSpace;
+        bool const encodeHlg = image->channelFormat == ntc::ChannelFormat::FLOAT32 && !g_options.linearFloatInputs;
+        ntc::ColorSpace const dstRgbColorSpace = encodeHlg ? ntc::ColorSpace::HLG : srcRgbColorSpace;
         ntc::ColorSpace const srcAlphaColorSpace = ntc::ColorSpace::Linear;
-        ntc::ColorSpace const dstAlphaColorSpace = image->channelFormat == ntc::ChannelFormat::FLOAT32 ? ntc::ColorSpace::HLG : srcAlphaColorSpace;
+        ntc::ColorSpace const dstAlphaColorSpace = encodeHlg ? ntc::ColorSpace::HLG : srcAlphaColorSpace;
         ntc::ColorSpace const srcColorSpaces[4] = { srcRgbColorSpace, srcRgbColorSpace, srcRgbColorSpace, srcAlphaColorSpace };
         ntc::ColorSpace const dstColorSpaces[4] = { dstRgbColorSpace, dstRgbColorSpace, dstRgbColorSpace, dstAlphaColorSpace };
 
@@ -2154,7 +2160,7 @@ int main(int argc, const char** argv)
             }
 
             if (!SaveGraphicsStagingTextures(metadata, device, g_options.saveImagesPath, g_options.imageFormat,
-                g_options.saveMips, graphicsResources))
+                g_options.saveMips, g_options.exrFloat32, graphicsResources))
                 return 1;
         }
     }

@@ -358,6 +358,7 @@ bool SaveGraphicsStagingTextures(
     char const* savePath,
     ImageContainer const userProvidedContainer,
     bool saveMips,
+    bool exrFloat32,
     GraphicsResourcesForTextureSet const& graphicsResources)
 {
     fs::path const outputPath = fs::path(savePath);
@@ -469,12 +470,12 @@ bool SaveGraphicsStagingTextures(
                         
             outputFileName += GetContainerExtension(container);
 
-            StartAsyncTask([&anyErrors, &mutex, container, outputFileName, textureData, textureDesc, mipWidth, mipHeight]()
+            StartAsyncTask([&anyErrors, &mutex, container, outputFileName, textureData, textureDesc, mipWidth, mipHeight, exrFloat32]()
             {
                 int const numChannels = 4; // Lower channel counts not currently supported
 
                 bool success = SaveImageToContainer(container, textureData.get(), mipWidth, mipHeight,
-                    numChannels, outputFileName.c_str());
+                    numChannels, outputFileName.c_str(), exrFloat32);
 
                 auto lockGuard = std::lock_guard(mutex);
 

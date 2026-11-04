@@ -213,7 +213,8 @@ char const* GetContainerExtension(ImageContainer container)
     }
 }
 
-bool SaveImageToContainer(ImageContainer container, void const* data, int width, int height, int channels, char const* fileName)
+bool SaveImageToContainer(ImageContainer container, void const* data, int width, int height, int channels, char const* fileName,
+    bool exrFloat32)
 {
     switch(container)
     {
@@ -231,7 +232,7 @@ bool SaveImageToContainer(ImageContainer container, void const* data, int width,
     case ImageContainer::TGA:
         return !!stbi_write_tga(fileName, width, height, channels, data);
     case ImageContainer::EXR:
-        return SaveEXR((float const*)data, width, height, channels, /* save_as_fp16 = */ true,
+        return SaveEXR((float const*)data, width, height, channels, /* save_as_fp16 = */ !exrFloat32,
             fileName, /* err = */ nullptr) == TINYEXR_SUCCESS;
     }
 }

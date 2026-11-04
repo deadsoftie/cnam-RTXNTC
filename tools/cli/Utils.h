@@ -65,4 +65,5 @@ enum class ImageContainer
 std::optional<ImageContainer> ParseImageContainer(char const* s);
 ntc::ChannelFormat GetContainerChannelFormat(ImageContainer container);
 char const* GetContainerExtension(ImageContainer container);
-bool SaveImageToContainer(ImageContainer container, void const* data, int width, int height, int channels, char const* fileName);
+bool SaveImageToContainer(ImageContainer container, void const* data, int width, int height, int channels, char const* fileName,
+    bool exrFloat32 = false);

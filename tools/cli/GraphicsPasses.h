@@ -74,6 +74,7 @@ bool SaveGraphicsStagingTextures(
     char const* savePath,
     ImageContainer const userProvidedContainer,
     bool saveMips,
+    bool exrFloat32,
     GraphicsResourcesForTextureSet const& graphicsResources);
 
 bool BlockCompressAndSaveGraphicsTextures(
