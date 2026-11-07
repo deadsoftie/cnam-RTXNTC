@@ -42,6 +42,7 @@ struct
     const char* loadCompressedFileName = nullptr;
     const char* saveCompressedFileName = nullptr;
     const char* saveManifestFileName = nullptr;
+    const char* saveTrainingStateFileName = nullptr;
     /** Optional: semantics.json path for resolving channel strings when writing --saveManifest (see Manifest.h). */
     const char* writeManifestSemanticsJson = nullptr;
     ToolInputType inputType = ToolInputType::None;
@@ -144,6 +145,8 @@ bool ProcessCommandLine(int argc, const char** argv)
         OPT_BOOLEAN(0,   "dithering", &g_options.enableDithering, "Enable dithering for 8-bit output textures when decompressing with graphics APIs (default on, use --no-dithering)"),
         OPT_BOOLEAN(0,   "exrFloat32", &g_options.exrFloat32, "Save EXR images with 32-bit float channels instead of 16-bit (default off)"),
         OPT_BOOLEAN(0,   "linearFloatInputs", &g_options.linearFloatInputs, "Keep float input images in the Linear color space instead of HLG (default off)"),
+        OPT_STRING (0,   "saveTrainingState", &g_options.saveTrainingStateFileName, "Save the FP16 training weights and channel mapping before the final quantization into the specified file: "
+            "uint32 channels, uint32 weights, float scale and bias per channel, FP16 weights (both halves)"),
         
         OPT_GROUP("Advanced settings:"),
         OPT_FLOAT  (0,   "bcPsnrThreshold", &g_options.bcPsnrThreshold, "PSNR loss threshold for BC7 optimization, in dB, default value is 0.2"),
@@ -397,6 +400,13 @@ bool ProcessCommandLine(int argc, const char** argv)
     if ((g_options.matchBcPsnr || !std::isnan(g_options.targetPsnr)) && !g_options.compress)
     {
         fprintf(stderr, "The --targetPsnr or --matchBcPsnr options require --compress.");
+        return false;
+    }
+
+    if (g_options.saveTrainingStateFileName &&
+        (!g_options.compress || g_options.matchBcPsnr || !std::isnan(g_options.targetPsnr)))
+    {
+        fprintf(stderr, "The --saveTrainingState option requires --compress without --targetPsnr or --matchBcPsnr.\n");
         return false;
     }
 
@@ -1351,6 +1361,39 @@ ntc::ITextureSet* LoadImages(ntc::IContext* context, Manifest& manifest)
     return rawTextureSet;
 }
 
+bool SaveTrainingState(ntc::ITextureSet* textureSet, char const* fileName)
+{
+    size_t weightCount = 0;
+    ntc::Status ntcStatus = textureSet->GetTrainingState(nullptr, &weightCount, nullptr);
+    CHECK_NTC_RESULT(GetTrainingState);
+
+    uint32_t const channels = uint32_t(textureSet->GetDesc().channels);
+    std::vector<uint16_t> weights(weightCount);
+    std::vector<float> channelMapping(channels * 2);
+    ntcStatus = textureSet->GetTrainingState(weights.data(), &weightCount, channelMapping.data());
+    CHECK_NTC_RESULT(GetTrainingState);
+
+    uint32_t const weightCount32 = uint32_t(weightCount);
+    FILE* file = fopen(fileName, "wb");
+    if (!file)
+    {
+        fprintf(stderr, "Failed to open '%s' for writing.\n", fileName);
+        return false;
+    }
+    bool const success = fwrite(&channels, sizeof(channels), 1, file) == 1
+        && fwrite(&weightCount32, sizeof(weightCount32), 1, file) == 1
+        && fwrite(channelMapping.data(), sizeof(float), channelMapping.size(), file) == channelMapping.size()
+        && fwrite(weights.data(), sizeof(uint16_t), weights.size(), file) == weights.size();
+    if (fclose(file) != 0 || !success)
+    {
+        fprintf(stderr, "Failed to write '%s'.\n", fileName);
+        return false;
+    }
+
+    printf("Saved training state '%s'\n", fileName);
+    return true;
+}
+
 bool CompressTextureSet(ntc::IContext* context, ntc::ITextureSet* textureSet, float* outFinalPsnr)
 {
     ntc::Status ntcStatus = textureSet->BeginCompression(g_options.compressionSettings);
@@ -1369,6 +1412,9 @@ bool CompressTextureSet(ntc::IContext* context, ntc::ITextureSet* textureSet, fl
     } while (ntcStatus == ntc::Status::Incomplete);
     CHECK_NTC_RESULT(RunCompressionSteps);
     printf("\n");
+
+    if (g_options.saveTrainingStateFileName && !SaveTrainingState(textureSet, g_options.saveTrainingStateFileName))
+        return false;
 
     ntcStatus = textureSet->FinalizeCompression();
     CHECK_NTC_RESULT(FinalizeCompression);

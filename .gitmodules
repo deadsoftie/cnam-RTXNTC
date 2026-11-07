@@ -9,7 +9,7 @@
 	url = https://github.com/NVIDIA-RTX/RTXTF-Library.git
 [submodule "libraries/RTXNTC-Library"]
 	path = libraries/RTXNTC-Library
-	url = https://github.com/NVIDIA-RTX/RTXNTC-Library.git
+	url = https://github.com/deadsoftie/cnam-RTXNTC-Library.git
 [submodule "libraries/RTXTS-TTM"]
 	path = libraries/RTXTS-TTM
 	url = https://github.com/NVIDIA-RTX/RTXTS-TTM.git
